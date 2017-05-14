@@ -1,8 +1,6 @@
 # None object分析
 
-```
-“管中窥豹，可见一斑”
-```
+“管中窥豹，可见一斑” --刘义庆《世说新语》
 
 ## Before we start
 开始之前需要知道一点：Python中所有的变量都是对象。包括None、bool变量、各种内置类型以及用户定义的类和类生成的实例，以及Python解释器中code的静态和动态反映。
@@ -10,11 +8,11 @@
 我记得高中数学做选择题的时候，如果有几个选项拿不准又懒得算，一个比较好的办法就是用几个特例来验证。
 
 至于Python, 最简单的对象无非就是None和True、False三个对象。至于为什么说这是三个对象，可以简单通过以下代码验证：
-<pre><code>
+```
 a = None # or True/False
 b = None
 assert(a is b)
-</code></pre>
+```
 即所有的None/True/False分别都是同一个对象，原因会在后文提到。
 So, let's get started with the simplest.
 ## 定位到具体代码
@@ -23,7 +21,7 @@ So, let's get started with the simplest.
 `type(None)`
 得到`<class 'NoneType'>`。
 通过搜索这个NoneType我们可以定位到object.c文件。此外还发现了一些有意思的内容，比如这个字符串是一个叫做 _PyNone_Type 的第二个属性。
-<pre><code>
+```
 PyTypeObject _PyNone_Type = {
     PyVarObject_HEAD_INIT(&PyType_Type, 0)
     "NoneType",
@@ -64,48 +62,48 @@ PyTypeObject _PyNone_Type = {
     0,                  /*tp_alloc */
     none_new,           /*tp_new */
 };
-</code></pre>
+```
 这就是Node的类型信息，这里我们暂时跳过这个结构体，先找到None真正对应的对象。
 同时这个_PyNone_Type还出现在
-<pre><code>
+```
 PyObject _Py_NoneStruct = {
   _PyObject_EXTRA_INIT
   1, &_PyNone_Type
 };
-</code></pre>
+```
 
 在 object.h中
-<pre><code>
+```
 PyAPI_DATA(PyObject) _Py_NoneStruct; /* Don't use this directly */
 #define Py_None (&_Py_NoneStruct)
 
 /* Macro for returning Py_None from a function */
 #define Py_RETURN_NONE return Py_INCREF(Py_None), Py_None
-</code></pre>
+```
 PyAPI_DATA是一个跟系统相关的宏，用来声明一个extern变量。而这个Py_None 就是None在C语言中的体现了，其本质就是一个经过层层包装的<strong>全局</strong>_Py_NoneStruct。也就是说，所有python中的None实际上都是这个全局的结构体。
 ### PyObject
 Python中所有变量都是对象,并且所有对象（除了None)都直接或间接继承于object。目前我们还没有找到这个object在C代码中对应的结构体，但是肯定会跟PyObject这个结构体有莫大的关系。在object.h中可以看到PyObject的定义
-<code><pre>
+```
 typedef struct _object {
     _PyObject_HEAD_EXTRA
     Py_ssize_t ob_refcnt;
     struct _typeobject *ob_type;
 } PyObject;
-</pre></code>
+```
 同时还有一段注释
-<p>
-/* Nothing is actually declared to be a PyObject, but every pointer to <br>
- * a Python object can be cast to a PyObject*.  This is inheritance built <br>
- * by hand.  Similarly every pointer to a variable-size Python object can, <br>
- * in addition, be cast to PyVarObject*. <br>
+```
+/* Nothing is actually declared to be a PyObject, but every pointer to
+ * a Python object can be cast to a PyObject*.  This is inheritance built
+ * by hand.  Similarly every pointer to a variable-size Python object can,
+ * in addition, be cast to PyVarObject*.
  */
-</p>
+```
 可见没有任何对象是直接对应于PyObject对象的，但是任意对象都可以转成PyObject的指针。所以这些对象在内存分布上一定遵循统一的规则。
 
 从PyObject的定义可以看到，其结构非常简单，所有对象都含有三部分。_PyObject_HEAD_EXTRA是内存相关的属性（实际上是指向在对上分配的另外的对象的两个指针），ob_refcnt为引用计数，ob_type为这个对象的类型对象的指针，比如_Py_NoneStruct的ob_type就指向_PyNone_Type。我们暂时跳过内存相关的内容，因此只关注这个ob_type域。因为在PyObject中并没有任何跟类型相关的信息（比如None和True在这里没有差别），所以每个类型的不同表现都肯定反映在ob_type中。
 ### PyTypeObject分析
 在typestruct.h（根据编译条件的不同也可能是object.h，由宏Py_LIMITED_AP控制）中可以找到PyTypeObject的定义
-<code><pre>
+```
 typedef struct _typeobject {
     const char *tp_name; /* For printing, in format "<module>.<name>" */
     Py_ssize_t tp_basicsize, tp_itemsize; /* For allocation */
@@ -185,23 +183,23 @@ typedef struct _typeobject {
     destructor tp_finalize;
 
 } PyTypeObject;
-</pre></code>
+```
 
 这个非常大的结构体(400Bytes)中，有很多函数指针，用于根据不同的类型实现不同功能。比如其中的tp_as_number就是把该对象当做一个数字时应表现出来的行为。从这里我们看出Python的面向对象机制的实现：所有对象最开始的一段内存分布都是相同的（所以才能转成PyObject指针），通过对象的ob_type指针指向某一个PyTypeObject（也遵循前述内存分布，通过PyObject_VAR_HEAD实现）对象，这个对象里面定义了所有支持的行为。而多态机制正是通过覆盖父类的函数指针来实现的。这跟C++非常相似，只不过C++是直接把虚函数表放在了对象里面最开始的位置，而Python是通过type对象这一代理来实现的。Python为什么要怎么设计，我现在也不懂，希望看完代码之后能领悟其中的深意。
 
 这里可能会有一个疑问，对于None, bool, int等变量，PyObject不需要额外存储数据，所以其结构是够用的。但是对于list，dict等可变对象，他们内部的对象又是存放在哪里的呢？答案就是上文提到的PyVarObject。
-<code><pre>
+```
 typedef struct {
     PyObject ob_base;
     Py_ssize_t ob_size; /* Number of items in variable part */
 } PyVarObject;
-</pre></code>
+```
 实际上PyVarObject是在PyObject后面增加了一个计数器，用来表示该可变对象中存储了多少个对象。而这些对象的存储地址则存在子类型（比如PyDictObject）中。
 
 这么多的函数，还是从最简单的_PyNone_Type开始看起吧。
 #### _PyNone_Type分析
 从前面的代码片段可以看到_PyNone_Type只实现了tp_dealloc, tp_repr, tp_as_number, tp_flags, tp_new几个字段。除开内存分配相关函数tp_flags是一些运行时相关的值，这里先不管。tp_repr就是在Python中调用repr时在C中最后调用的函数，而tp_as_number前面已经提到过了，_PyNone_Type的tp_as_number 是 none_as_number
-<code><pre>
+```
 static PyNumberMethods none_as_number = {
     0,                          /* nb_add */
     0,                          /* nb_subtract */
@@ -238,9 +236,9 @@ static PyNumberMethods none_as_number = {
     0,                          /* nb_inplace_true_divide */
     0,                          /* nb_index */
 };
-</pre></code>
+```
 又是一个不小的结构体
-<code><pre>
+```
 typedef struct {
     binaryfunc nb_add;
     binaryfunc nb_subtract;
@@ -279,15 +277,15 @@ typedef struct {
     binaryfunc nb_matrix_multiply;
     binaryfunc nb_inplace_matrix_multiply;
 } PyNumberMethods;
-</pre></code>
+```
 好在这些函数的命名都能比较清楚地看出用途。可以看到none_as_number只实现了一个唯一的域nb_bool
-<code><pre>
+```
 static int
 none_bool(PyObject *v)
 {
     return 0;
 }
-</pre></code>
+```
 所以None始终是False
 ## 小结
 1. Python中所有变量都是对象，在C一层都可以转成PyObject指针。
