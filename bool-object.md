@@ -1,13 +1,19 @@
 # Bool Object
+
 “无是非之心，非人也。” ——《孟子·公孙丑上》
-## Py_True & Py_False 对象
+
+## Py\_True & Py\_False 对象
+
 上一篇文章提到None对象是全局唯一的，同样True和False也是全局唯一的。在boolobject.h中
+
 ```
 PyAPI_DATA(struct _longobject) _Py_FalseStruct, _Py_TrueStruct;
 #define Py_False ((PyObject *) &_Py_FalseStruct)
 #define Py_True ((PyObject *) &_Py_TrueStruct)
 ```
+
 查看这两个对象的定义
+
 ```
 struct _longobject _Py_FalseStruct = {
     PyVarObject_HEAD_INIT(&PyBool_Type, 0)
@@ -18,9 +24,13 @@ struct _longobject _Py_TrueStruct = {
     { 1 }
 };
 ```
+
 二者都是PyLongObject，唯一的（好吧有两个）区别是在存值的地方一个是0一个是1。Python3已经没有了PyIntObject这个对象，而全部改成了PyLongObject，并冠以“int"的名称。其内存布局在下一篇文章中分析。
-## PyTypeObject对象 & bool_函数 
+
+## PyTypeObject对象 & bool\_函数
+
 PyBoolObject对应的PyTypeObject（去掉了没有定义的函数）
+
 ```
 PyTypeObject PyBool_Type = {
     PyVarObject_HEAD_INIT(&PyType_Type, 0)
@@ -35,8 +45,10 @@ PyTypeObject PyBool_Type = {
     bool_new,                                   /* tp_new */
 };
 ```
-boolobject.c 是一个不到200行的小文件，里面定义了bool变量支持的各种运算。
-bool型变量只有一个创建的入口bool_new
+
+boolobject.c 是一个不到200行的小文件，里面定义了bool变量支持的各种运算。  
+bool型变量只有一个创建的入口bool\_new
+
 ```
 static PyObject *
 bool_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
@@ -53,7 +65,9 @@ bool_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     return PyBool_FromLong(ok);
 }
 ```
-其中 PyOBJECT_IsTrue定义为
+
+其中 PyOBJECT\_IsTrue定义为
+
 ```
 int
 PyObject_IsTrue(PyObject *v)
@@ -80,9 +94,11 @@ PyObject_IsTrue(PyObject *v)
     return (res > 0) ? 1 : Py_SAFE_DOWNCAST(res, Py_ssize_t, int);
 }
 ```
-可见很多类型的对象都可以转成bool类型，Python解释器会依次查找每一种转换成bool类型的可能性。比如PyLongObject(PyLong_Type)实现了tp_as_number->nb_bool，PyListObject(PyList_Type)实现了tp_as_sequence->sq_length，PyDictObject(PyDict_Type)实现了tp_as_mapping->mp_length。这些都可以转换成bool。而自定义的类（不是内置类型的子类或者自己hack的类）对象都会走到 else 里面的 return 1逻辑。
 
-当传入参数合法并且通过PyObject_IsTrue转换后，会调用PyBool_FromLong返回Py_True或者Py_False。
+可见很多类型的对象都可以转成bool类型，Python解释器会依次查找每一种转换成bool类型的可能性。比如PyLongObject\(PyLong\_Type\)实现了tp\_as\_number-&gt;nb\_bool，PyListObject\(PyList\_Type\)实现了tp\_as\_sequence-&gt;sq\_length，PyDictObject\(PyDict\_Type\)实现了tp\_as\_mapping-&gt;mp\_length。这些都可以转换成bool。而自定义的类（不是内置类型的子类或者自己hack的类）对象都会走到 else 里面的 return 1逻辑。
+
+当传入参数合法并且通过PyObject\_IsTrue转换后，会调用PyBool\_FromLong返回Py\_True或者Py\_False。
+
 ```
 PyObject *PyBool_FromLong(long ok)
 {
@@ -95,14 +111,18 @@ PyObject *PyBool_FromLong(long ok)
     return result;
 }
 ```
+
 比如：
+
 ```
 bool(3)
 bool([[]])
 bool({{1:1}})
 ```
-都会返回True
-bool_as_number中定义的函数归定了bool变量在整数运算中的行为。
+
+都会返回True  
+bool\_as\_number中定义的函数归定了bool变量在整数运算中的行为。
+
 ```
 static PyObject *
 bool_and(PyObject *a, PyObject *b)
@@ -112,24 +132,36 @@ bool_and(PyObject *a, PyObject *b)
     return PyBool_FromLong((a == Py_True) & (b == Py_True));
 }
 ```
-这个函数定义了bool变量在进行 & 运算时的操作。可以看到，其内部调用了PyLongObject的nb_add函数，这是符合预期的。
+
+这个函数定义了bool变量在进行 & 运算时的操作。可以看到，其内部调用了PyLongObject的nb\_add函数，这是符合预期的。
+
 ```
 True & 3
 0 | False
 ```
+
 等价于
+
 ```
 1 & 3
-0 | 0 
+0 | 0
 ```
+
 而为什么
+
 ```
 True == 1
 False + 1 == 1
 ```
-这些运算并没有在bool_as_number中体现。这些函数是在PyLongObject中定义的，在下一篇文章中会有所体现。
-# 小结 
-1. Py_True/Py_False也是两个全局变量（单例）
+
+这些运算并没有在bool\_as\_number中体现。这些函数是在PyLongObject中定义的，在下一篇文章中会有所体现。
+
+# 小结
+
+1. Py\_True/Py\_False也是两个全局变量（单例）
 2. bool变量之所以能从int/list/dict等对象转换，是因为这些对象都定义了一些特殊的操作。
-3. bool变量定义了一些操作，以表现出整数的特性。这些操作并不全部在Py_True/Py_False包含的函数指针里面。
+3. bool变量定义了一些操作，以表现出整数的特性。这些操作并不全部在Py\_True/Py\_False包含的函数指针里面。
 4. Markdown一点也不好用啊...
+
+
+
